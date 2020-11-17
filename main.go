@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -8,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -41,6 +44,32 @@ func (collection *URLCollection) Set(url string, state bool) {
 //getCount ...
 func (collection *URLCollection) getCount() int {
 	return len(collection.list)
+}
+
+//runDownload ...
+func runDownload(threadURL string, savePathDir string, threadCount int) {
+	urls, err := getImageUrls(threadURL)
+
+	if err != nil {
+		print(err)
+	}
+
+	total := urls.getCount()
+	channel := make(chan int)
+
+	for i := 0; i < threadCount; i++ {
+		go Downloader(urls, savePathDir, channel)
+	}
+
+	count := 0
+	for i := range channel {
+		count += i
+		clearTerminal()
+		renderProgressbar(50, total, count)
+		if total == count {
+			close(channel)
+		}
+	}
 }
 
 //Downloader ...
@@ -116,10 +145,29 @@ func download(url string, dir string, fileName string) error {
 }
 
 //clearTerminal ...
-func clearTerminal() {
-	cmd := exec.Command("cmd", "/c", "cls") //Windows example, its tested
-	cmd.Stdout = os.Stdout
-	cmd.Run()
+func clearTerminal() error {
+	clear := make(map[string]func())
+
+	clear["linux"] = func() {
+		cmd := exec.Command("clear")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
+
+	clear["windows"] = func() {
+		cmd := exec.Command("cmd", "/c", "cls")
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
+
+	clearFunction, ok := clear[runtime.GOOS]
+	if ok {
+		clearFunction()
+		return nil
+	}
+
+	return errors.New("Your platform is unsupported! I can't clear terminal screen :(")
+
 }
 
 //renderProgressbar ...
@@ -144,32 +192,21 @@ func renderProgressbar(size int, total int, current int) {
 }
 
 func main() {
-	urls, err := getImageUrls("https://2ch.hk/b/res/233362968.html")
 
-	if err != nil {
-		print(err)
+	threadURL := flag.String("url", "", "Thread url")
+	savePathDir := flag.String("path", "", "Save directory path")
+	thredCount := flag.Int("thread", 1, "Thread count")
+	flag.Parse()
+
+	if *threadURL == "" {
+		println("Thread url should be specified")
+		return
 	}
 
-	total := urls.getCount()
-	channel := make(chan int)
-
-	go Downloader(urls, "E:/2ch/img/", channel)
-	go Downloader(urls, "E:/2ch/img/", channel)
-	go Downloader(urls, "E:/2ch/img/", channel)
-	go Downloader(urls, "E:/2ch/img/", channel)
-
-	go Downloader(urls, "E:/2ch/img/", channel)
-	go Downloader(urls, "E:/2ch/img/", channel)
-	go Downloader(urls, "E:/2ch/img/", channel)
-	go Downloader(urls, "E:/2ch/img/", channel)
-
-	count := 0
-	for i := range channel {
-		count += i
-		clearTerminal()
-		renderProgressbar(50, total, count)
-		if total == count {
-			close(channel)
-		}
+	if *savePathDir == "" {
+		println("Save directory path  should be specified")
+		return
 	}
+
+	runDownload(*threadURL, *savePathDir, *thredCount)
 }
