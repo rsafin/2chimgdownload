@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -13,17 +12,18 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 const baseURL = "https://2ch.hk"
 
-//URLCollection ...
+// URLCollection ...
 type URLCollection struct {
 	mutex sync.Mutex
 	list  map[string]bool
 }
 
-//Append ...
+// Append ...
 func (collection *URLCollection) Append(url string) {
 	collection.mutex.Lock()
 	if _, ok := collection.list[url]; !ok {
@@ -32,7 +32,7 @@ func (collection *URLCollection) Append(url string) {
 	collection.mutex.Unlock()
 }
 
-//Set ...
+// Set ...
 func (collection *URLCollection) Set(url string, state bool) {
 	collection.mutex.Lock()
 	if _, ok := collection.list[url]; ok {
@@ -41,12 +41,12 @@ func (collection *URLCollection) Set(url string, state bool) {
 	collection.mutex.Unlock()
 }
 
-//getCount ...
+// getCount ...
 func (collection *URLCollection) getCount() int {
 	return len(collection.list)
 }
 
-//runDownload ...
+// runDownload ...
 func runDownload(threadURL string, savePathDir string, threadCount int) {
 	urls, err := getImageUrls(threadURL)
 
@@ -56,7 +56,7 @@ func runDownload(threadURL string, savePathDir string, threadCount int) {
 
 	total := urls.getCount()
 	channel := make(chan int)
-
+	start := time.Now()
 	for i := 0; i < threadCount; i++ {
 		go Downloader(urls, savePathDir, channel)
 	}
@@ -65,14 +65,16 @@ func runDownload(threadURL string, savePathDir string, threadCount int) {
 	for i := range channel {
 		count += i
 		clearTerminal()
-		renderProgressbar(50, total, count)
+		renderProgressbar(25, total, count)
 		if total == count {
 			close(channel)
 		}
 	}
+
+	fmt.Println("Duratin:", time.Now().Unix()-start.Unix(), "sec")
 }
 
-//Downloader ...
+// Downloader ...
 func Downloader(collection *URLCollection, dir string, channel chan int) {
 	for url, state := range collection.list {
 		if !state {
@@ -85,7 +87,7 @@ func Downloader(collection *URLCollection, dir string, channel chan int) {
 	}
 }
 
-//getImageUrls
+// getImageUrls
 func getImageUrls(url string) (*URLCollection, error) {
 	res, err := http.Get(url)
 	urlCollection := URLCollection{list: make(map[string]bool)}
@@ -96,7 +98,7 @@ func getImageUrls(url string) (*URLCollection, error) {
 
 	defer res.Body.Close()
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 
 	if err != nil {
 		return &urlCollection, err
@@ -113,7 +115,7 @@ func getImageUrls(url string) (*URLCollection, error) {
 	return &urlCollection, nil
 }
 
-//download
+// download
 func download(url string, dir string, fileName string) error {
 	response, err := http.Get(url)
 
@@ -144,7 +146,7 @@ func download(url string, dir string, fileName string) error {
 	return nil
 }
 
-//clearTerminal ...
+// clearTerminal ...
 func clearTerminal() error {
 	clear := make(map[string]func())
 
@@ -166,11 +168,10 @@ func clearTerminal() error {
 		return nil
 	}
 
-	return errors.New("Your platform is unsupported! I can't clear terminal screen :(")
-
+	return errors.New("your platform is unsupported! I can't clear terminal screen :(")
 }
 
-//renderProgressbar ...
+// renderProgressbar ...
 func renderProgressbar(size int, total int, current int) {
 	full := "▰ "
 	empty := "▱ "
